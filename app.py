@@ -1,83 +1,145 @@
 import os
 import json
-import urllib.parse
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, session, url_for
 from groq import Groq
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "super_secret_flask_key_123")
 
-# Инициализируем клиент Groq
-# Ключ запрашивается из переменной окружения GROQ_API_KEY
+# Инициализация Groq
 groq_api_key = os.environ.get("GROQ_API_KEY")
-client = Groq(api_key=groq_api_key) if groq_api_key else None
+groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
 
-# Системные инструкции для выдачи строгого JSON
+# Настройка OAuth Spotify
+SPOTIFY_CLIENT_ID = os.environ.get("SPOTIPY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIPY_CLIENT_SECRET")
+SPOTIFY_REDIRECT_URI = os.environ.get("SPOTIPY_REDIRECT_URI", "http://localhost:5000/callback")
+
+SCOPE = "playlist-modify-public playlist-modify-private"
+
+def create_spotify_oauth():
+    return SpotifyOAuth(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET,
+        redirect_uri=SPOTIFY_REDIRECT_URI,
+        scope=SCOPE
+    )
+
 SYSTEM_INSTRUCTION = """
 You are an expert music curator. 
-Analyze the user's described mood, genre preference, or vibe and suggest 5 matching songs.
+Analyze the user's described mood/vibe and suggest EXACTLY 50 matching songs.
 
 CRITICAL INSTRUCTION:
-You MUST reply ONLY with a valid JSON array of objects. Do not include markdown code blocks (like ```json), do not include any intro or outro text.
+You MUST reply ONLY with a valid JSON array of 50 objects. Do not include markdown code blocks (like ```json), do not include any intro or outro text.
 
 Format example:
 [
   {"artist": "Artist Name", "title": "Song Title", "genre": "Genre"},
-  {"artist": "Artist Name 2", "title": "Song Title 2", "genre": "Genre 2"}
+  ...
 ]
 """
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    tracks = []
+    tracks = session.get('last_tracks', [])
     error = None
-    user_prompt = ""
+    user_prompt = session.get('last_prompt', "")
+    playlist_url = session.pop('spotify_playlist_url', None)
 
     if request.method == 'POST':
         user_prompt = request.form.get('vibe', '').strip()
         
         if not user_prompt:
-            error = "Пожалуйста, опишите ваше настроение или желаемый вайб."
-        elif not client:
-            error = "API ключ Groq не настроен. Добавьте GROQ_API_KEY в переменные окружения на Render."
+            error = "Пожалуйста, опишите ваше настроение."
+        elif not groq_client:
+            error = "API ключ Groq не настроен."
         else:
             try:
-                # Запрос к нейросети через Groq API
-                completion = client.chat.completions.create(
+                # Запрос к Groq для генерации 50 треков
+                completion = groq_client.chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=[
                         {"role": "system", "content": SYSTEM_INSTRUCTION},
-                        {"role": "user", "content": f"Generate a 5-song playlist for this mood/vibe: {user_prompt}"}
+                        {"role": "user", "content": f"Generate a 50-song playlist for this mood: {user_prompt}"}
                     ],
                     temperature=0.7,
-                    response_format={"type": "json_object"} if hasattr(client.chat.completions, 'response_format') else None
+                    max_tokens=4000
                 )
 
-                response_content = completion.choices[0].message.content
+                response_content = completion.choices[0].message.content.strip()
                 
-                # Парсим полученный JSON
+                # Очистка от маркдауна, если модель случайно добавит его
+                if response_content.startswith("```"):
+                    response_content = response_content.split("\n", 1)[1].rsplit("\n", 1)[0]
+
                 raw_data = json.loads(response_content)
 
-                # Если Groq обернул массив в объект вида {"songs": [...]}, извлекаем его
                 if isinstance(raw_data, dict):
                     raw_data = next(iter(raw_data.values()))
 
-                # Формируем динамические ссылки для поиска в Spotify и YouTube
-                for item in raw_data:
-                    query = f"{item['artist']} {item['title']}"
-                    encoded_query = urllib.parse.quote(query)
-                    
-                    tracks.append({
-                        'artist': item.get('artist', 'Unknown Artist'),
-                        'title': item.get('title', 'Unknown Title'),
-                        'genre': item.get('genre', 'Music'),
-                        'spotify_url': f"[https://open.spotify.com/search/](https://open.spotify.com/search/){encoded_query}",
-                        'youtube_url': f"[https://www.youtube.com/results?search_query=](https://www.youtube.com/results?search_query=){encoded_query}"
-                    })
+                tracks = raw_data
+                session['last_tracks'] = tracks
+                session['last_prompt'] = user_prompt
 
             except Exception as e:
                 error = f"Ошибка при генерации плейлиста: {str(e)}"
 
-    return render_template('index.html', tracks=tracks, error=error, user_prompt=user_prompt)
+    return render_template('index.html', tracks=tracks, error=error, user_prompt=user_prompt, playlist_url=playlist_url)
+
+
+@app.route('/export-spotify')
+def export_spotify():
+    """Перенаправление на авторизацию Spotify"""
+    sp_oauth = create_spotify_oauth()
+    auth_url = sp_oauth.get_authorize_url()
+    return redirect(auth_url)
+
+
+@app.route('/callback')
+def callback():
+    """Обработка ответа от Spotify и создание плейлиста"""
+    sp_oauth = create_spotify_oauth()
+    session.clear()
+    code = request.args.get('code')
+    token_info = sp_oauth.get_access_token(code)
+
+    if not token_info:
+        return redirect(url_for('index'))
+
+    sp = spotipy.Spotify(auth=token_info['access_token'])
+    user_id = sp.current_user()['id']
+
+    tracks = session.get('last_tracks', [])
+    prompt = session.get('last_prompt', 'AI Vibe')
+
+    if tracks:
+        # 1. Создаем плейлист
+        playlist = sp.user_playlist_create(
+            user=user_id,
+            name=f"AI Vibe: {prompt[:30]}",
+            public=True,
+            description=f"Плейлист сгенерирован AI по запросу: {prompt}"
+        )
+
+        # 2. Ищем URI треков в Spotify
+        track_uris = []
+        for track in tracks:
+            query = f"artist:{track['artist']} track:{track['title']}"
+            result = sp.search(q=query, type='track', limit=1)
+            items = result['tracks']['items']
+            if items:
+                track_uris.append(items[0]['uri'])
+
+        # 3. Добавляем треки порциями (максимум по 100 за запрос в Spotify API)
+        if track_uris:
+            sp.playlist_add_items(playlist['id'], track_uris)
+
+        session['spotify_playlist_url'] = playlist['external_urls']['spotify']
+
+    return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     app.run(debug=True)
