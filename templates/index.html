@@ -3,211 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Playlist Generator</title>
+    <title>AI 50-Track Playlist Generator</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-
-        body {
-            background-color: #121212;
-            color: #FFFFFF;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            background-color: #181818;
-            border-radius: 12px;
-            padding: 30px;
-            width: 100%;
-            max-width: 600px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-            border: 1px solid #282828;
-        }
-
-        h1 {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            color: #1DB954; /* Spotify Green */
-            text-align: center;
-        }
-
-        p.subtitle {
-            color: #A7A7A7;
-            font-size: 14px;
-            text-align: center;
-            margin-bottom: 24px;
-        }
-
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 14px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background-color: #242424;
-            color: #FFF;
-            font-size: 15px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-
-        input[type="text"]:focus {
-            border-color: #1DB954;
-        }
-
-        button {
-            padding: 14px;
-            border-radius: 25px;
-            border: none;
-            background-color: #1DB954;
-            color: #000;
-            font-weight: 700;
-            font-size: 15px;
-            cursor: pointer;
-            transition: transform 0.1s, background-color 0.2s;
-        }
-
-        button:hover {
-            background-color: #1ed760;
-            transform: scale(1.02);
-        }
-
-        .error {
-            background-color: rgba(220, 53, 69, 0.2);
-            border: 1px solid #dc3545;
-            color: #ff6b6b;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
-
-        .playlist {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .track-card {
-            background-color: #242424;
-            padding: 16px;
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: background-color 0.2s;
-        }
-
-        .track-card:hover {
-            background-color: #2A2A2A;
-        }
-
-        .track-info {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            max-width: 65%;
-        }
-
-        .track-title {
-            font-weight: 600;
-            font-size: 16px;
-            color: #FFF;
-        }
-
-        .track-artist {
-            color: #B3B3B3;
-            font-size: 14px;
-        }
-
-        .track-genre {
-            display: inline-block;
-            font-size: 11px;
-            background-color: #333;
-            color: #A7A7A7;
-            padding: 2px 8px;
-            border-radius: 12px;
-            width: fit-content;
-            margin-top: 4px;
-        }
-
-        .track-links {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn-link {
-            text-decoration: none;
-            padding: 8px 12px;
-            border-radius: 16px;
-            font-size: 12px;
-            font-weight: 600;
-            transition: opacity 0.2s;
-        }
-
-        .btn-link:hover {
-            opacity: 0.8;
-        }
-
-        .btn-spotify {
-            background-color: #1DB954;
-            color: #000;
-        }
-
-        .btn-youtube {
-            background-color: #FF0000;
-            color: #FFF;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #121212; color: #FFF; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { background-color: #181818; border-radius: 12px; padding: 30px; width: 100%; max-width: 700px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 1px solid #282828; }
+        h1 { font-size: 24px; color: #1DB954; text-align: center; margin-bottom: 8px; }
+        p.subtitle { color: #A7A7A7; font-size: 14px; text-align: center; margin-bottom: 24px; }
+        form { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+        input[type="text"] { width: 100%; padding: 14px; border-radius: 8px; border: 1px solid #333; background: #242424; color: #FFF; font-size: 15px; outline: none; }
+        input[type="text"]:focus { border-color: #1DB954; }
+        .btn { padding: 14px; border-radius: 25px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; text-align: center; text-decoration: none; display: block; }
+        .btn-submit { background-color: #1DB954; color: #000; }
+        .btn-spotify-export { background-color: #1ED760; color: #000; margin-bottom: 20px; }
+        .btn-success { background-color: #0D6EFD; color: #FFF; margin-bottom: 20px; }
+        .error { background-color: rgba(220, 53, 69, 0.2); border: 1px solid #dc3545; color: #ff6b6b; padding: 12px; border-radius: 8px; font-size: 14px; margin-bottom: 20px; }
+        .playlist { display: flex; flex-direction: column; gap: 8px; max-height: 500px; overflow-y: auto; padding-right: 5px; }
+        .track-card { background-color: #242424; padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .track-num { color: #1DB954; font-weight: bold; margin-right: 10px; width: 25px; }
+        .track-info { display: flex; flex-direction: column; flex-grow: 1; }
+        .track-title { font-weight: 600; font-size: 15px; }
+        .track-artist { color: #B3B3B3; font-size: 13px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🎧 AI Mood Playlist</h1>
-    <p class="subtitle">Опишите вайб, состояние или тему, и AI подберет идеальные треки</p>
+    <h1>🎧 AI Mood Playlist (50 Tracks)</h1>
+    <p class="subtitle">Сгенерируйте 50 треков под ваше настроение и сохраните в Spotify</p>
 
     <form method="POST">
-        <input 
-            type="text" 
-            name="vibe" 
-            placeholder="Например: Ночной драйв под хип-хоп или тяжелые риффы для зала" 
-            value="{{ user_prompt }}"
-            required
-        >
-        <button type="submit">Сгенерировать плейлист</button>
+        <input type="text" name="vibe" placeholder="Например: late night drive, ночной хип-хоп, саундтрек для зала" value="{{ user_prompt }}" required>
+        <button type="submit" class="btn btn-submit">Сгенерировать 50 треков</button>
     </form>
 
     {% if error %}
         <div class="error">{{ error }}</div>
     {% endif %}
 
+    {% if playlist_url %}
+        <a href="{{ playlist_url }}" target="_blank" class="btn btn-success">✅ Плейлист успешно создан в вашем Spotify! Открыть</a>
+    {% endif %}
+
     {% if tracks %}
+        <a href="/export-spotify" class="btn btn-spotify-export">🎵 Сохранить этот плейлист в мой Spotify</a>
+        
         <div class="playlist">
             {% for track in tracks %}
                 <div class="track-card">
+                    <span class="track-num">{{ loop.index }}</span>
                     <div class="track-info">
                         <span class="track-title">{{ track.title }}</span>
                         <span class="track-artist">{{ track.artist }}</span>
-                        <span class="track-genre">{{ track.genre }}</span>
-                    </div>
-                    <div class="track-links">
-                        <a href="{{ track.spotify_url }}" target="_blank" class="btn-link btn-spotify">Spotify</a>
-                        <a href="{{ track.youtube_url }}" target="_blank" class="btn-link btn-youtube">YouTube</a>
                     </div>
                 </div>
             {% endfor %}
