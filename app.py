@@ -7,11 +7,11 @@ from google.genai import types
 
 app = Flask(__name__)
 
-# Берём ключ из переменных окружения или используем ваш ключ по умолчанию
-api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyDnRq3kvJr8-jinCUUli1RFi-DIFvMsr8g")
-client = genai.Client(api_key=api_key)
+# Считываем ключ из переменной окружения GEMINI_API_KEY
+api_key = os.environ.get("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key) if api_key else None
 
-# Системные инструкции: заставляем модель отвечать СТРОГО в формате JSON
+# Системные инструкции для получения строгого JSON от модели
 SYSTEM_INSTRUCTION = """
 You are an expert music curator. 
 Analyze the user's described mood, genre preference, or vibe and suggest 5 matching songs.
@@ -37,9 +37,11 @@ def index():
         
         if not user_prompt:
             error = "Пожалуйста, опишите ваше настроение или желаемый вайб."
+        elif not client:
+            error = "API ключ Gemini не настроен. Пожалуйста, добавьте GEMINI_API_KEY в переменные окружения (Environment) на Render."
         else:
             try:
-                # Запрос к Gemini 3.5 Flash
+                # Запрос к нейросети Gemini
                 response = client.models.generate_content(
                     model='gemini-3.5-flash',
                     contents=f"Generate a 5-song playlist for this mood/vibe: {user_prompt}",
@@ -50,10 +52,10 @@ def index():
                     )
                 )
 
-                # Парсим полученный JSON
+                # Разбор полученного JSON-ответа
                 raw_data = json.loads(response.text)
 
-                # Формируем динамические ссылки на Spotify и YouTube
+                # Формирование ссылок для поиска в Spotify и YouTube
                 for item in raw_data:
                     query = f"{item['artist']} {item['title']}"
                     encoded_query = urllib.parse.quote(query)
