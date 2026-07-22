@@ -32,7 +32,7 @@ You are an expert music curator.
 Analyze the user's described mood/vibe and suggest EXACTLY 50 matching songs.
 
 CRITICAL INSTRUCTION:
-You MUST reply ONLY with a valid JSON array of 50 objects. Do not include markdown code blocks (like ```json), do not include any intro or outro text.
+You MUST reply ONLY with a valid JSON array of 35 objects or more. Do not include markdown code blocks (like ```json), do not include any intro or outro text.
 
 Format example:
 [
@@ -62,7 +62,7 @@ def index():
                     model="llama-3.1-8b-instant",
                     messages=[
                         {"role": "system", "content": SYSTEM_INSTRUCTION},
-                        {"role": "user", "content": f"Generate a 50-song playlist for this mood: {user_prompt}"}
+                        {"role": "user", "content": f"Generate a 35-song or more playlist for this mood: {user_prompt}"}
                     ],
                     temperature=0.7,
                     max_tokens=4000
