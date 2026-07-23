@@ -28,33 +28,32 @@ def create_spotify_oauth():
         scope=SCOPE
     )
 
+# Убрали лишние поля (genre), чтобы экономить токены и не упираться в TPM
 SYSTEM_INSTRUCTION = """
 You are an expert music curator. 
-Analyze the user's described mood/vibe and suggest AT LEAST 40 tracks (40 or more matching songs).
+Suggest AT LEAST 40 tracks for the given mood/genre.
 
 CRITICAL INSTRUCTIONS:
-1. You MUST generate a minimum of 40 songs.
-2. You MUST reply ONLY with a valid JSON array of track objects. Do not include markdown code blocks (like ```json), do not include any intro or outro text.
+1. Return a minimum of 40 songs.
+2. Output ONLY a raw JSON array of objects with keys "artist" and "title".
+3. No markdown formatting, no code blocks, no preamble.
 
-Format example:
-[
-  {"artist": "Artist Name", "title": "Song Title", "genre": "Genre"},
-  ...
-]
+Example:
+[{"artist": "Band", "title": "Song"}]
 """
 
 def generate_tracks(user_prompt):
-    """Helper function to call Groq API with randomized seed for fresh recommendations"""
+    """Helper function to call Groq API without hitting TPM limits"""
     random_seed = random.randint(1, 100000)
     
     completion = groq_client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
             {"role": "system", "content": SYSTEM_INSTRUCTION},
-            {"role": "user", "content": f"Generate a playlist of at least 40 songs for this mood: '{user_prompt}'. Variation seed: {random_seed}"}
+            {"role": "user", "content": f"Generate 40+ songs for mood: '{user_prompt}'. Seed: {random_seed}"}
         ],
         temperature=0.85,
-        max_tokens=6000
+        max_tokens=3500  # Снижено с 6000, чтобы уложиться в бесплатный TPM лимит Groq
     )
 
     response_content = completion.choices[0].message.content.strip()
@@ -97,7 +96,7 @@ def index():
 
 @app.route('/retry', methods=['POST'])
 def retry():
-    """Regenerates at least 40 new tracks for the existing prompt"""
+    """Regenerates tracks for the existing prompt"""
     user_prompt = session.get('last_prompt', "")
     if not user_prompt:
         return redirect(url_for('index'))
@@ -158,6 +157,10 @@ def callback():
         session['spotify_playlist_url'] = playlist['external_urls']['spotify']
 
     return redirect(url_for('index'))
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
 
 
 if __name__ == '__main__':
