@@ -16,7 +16,7 @@ groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
 # Spotify OAuth Configuration
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIPY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIPY_CLIENT_SECRET")
-SPOTIFY_REDIRECT_URI = os.environ.get("SPOTIPY_REDIRECT_URI", "http://localhost:5000/callback")
+SPOTIFY_REDIRECT_URI = os.environ.get("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:5000/callback")
 
 SCOPE = "playlist-modify-public playlist-modify-private"
 
