@@ -90,10 +90,23 @@
             color: #000000;
         }
 
+        .actions-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
         .btn-spotify-export {
             background-color: #FFFFFF;
             color: #000000;
-            margin-bottom: 20px;
+            flex-grow: 1;
+        }
+
+        .btn-retry {
+            background-color: #282828;
+            color: #FFFFFF;
+            border: 1px solid #333333;
+            padding: 12px 20px;
         }
 
         .btn-success {
@@ -185,7 +198,7 @@
 
 <div class="container">
     <h1>AI Playlist Generator</h1>
-    <p class="subtitle">Enter a mood, prompt, or genre to generate 50 tracks.</p>
+    <p class="subtitle">Enter a mood, prompt, or genre to generate a playlist.</p>
 
     <form method="POST">
         <input 
@@ -207,7 +220,12 @@
     {% endif %}
 
     {% if tracks %}
-        <a href="/export-spotify" class="btn btn-spotify-export">Save to Spotify Account</a>
+        <div class="actions-group">
+            <a href="/export-spotify" class="btn btn-spotify-export">Save to Spotify Account</a>
+            <form action="/retry" method="POST" style="margin: 0;">
+                <button type="submit" class="btn btn-retry">Retry</button>
+            </form>
+        </div>
         
         <div class="playlist">
             {% for track in tracks %}
