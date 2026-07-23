@@ -30,10 +30,11 @@ def create_spotify_oauth():
 
 SYSTEM_INSTRUCTION = """
 You are an expert music curator. 
-Analyze the user's described mood/vibe and suggest EXACTLY 50 matching songs.
+Analyze the user's described mood/vibe and suggest AT LEAST 40 tracks (40 or more matching songs).
 
-CRITICAL INSTRUCTION:
-You MUST reply ONLY with a valid JSON array of 50 objects. Do not include markdown code blocks (like ```json), do not include any intro or outro text.
+CRITICAL INSTRUCTIONS:
+1. You MUST generate a minimum of 40 songs.
+2. You MUST reply ONLY with a valid JSON array of track objects. Do not include markdown code blocks (like ```json), do not include any intro or outro text.
 
 Format example:
 [
@@ -44,17 +45,16 @@ Format example:
 
 def generate_tracks(user_prompt):
     """Helper function to call Groq API with randomized seed for fresh recommendations"""
-    # Introduce random seed/temperature variations for diverse outputs on retry
     random_seed = random.randint(1, 100000)
     
     completion = groq_client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
             {"role": "system", "content": SYSTEM_INSTRUCTION},
-            {"role": "user", "content": f"Generate a 50-song playlist for this mood: '{user_prompt}'. Variation seed: {random_seed}"}
+            {"role": "user", "content": f"Generate a playlist of at least 40 songs for this mood: '{user_prompt}'. Variation seed: {random_seed}"}
         ],
         temperature=0.85,
-        max_tokens=4000
+        max_tokens=6000
     )
 
     response_content = completion.choices[0].message.content.strip()
@@ -97,7 +97,7 @@ def index():
 
 @app.route('/retry', methods=['POST'])
 def retry():
-    """Regenerates 50 new tracks for the existing prompt"""
+    """Regenerates at least 40 new tracks for the existing prompt"""
     user_prompt = session.get('last_prompt', "")
     if not user_prompt:
         return redirect(url_for('index'))
@@ -158,10 +158,6 @@ def callback():
         session['spotify_playlist_url'] = playlist['external_urls']['spotify']
 
     return redirect(url_for('index'))
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
 
 
 if __name__ == '__main__':
