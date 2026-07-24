@@ -28,7 +28,6 @@ def create_spotify_oauth():
         scope=SCOPE
     )
 
-# Убрали лишние поля (genre), чтобы экономить токены и не упираться в TPM
 SYSTEM_INSTRUCTION = """
 You are an expert music curator. 
 Suggest AT LEAST 40 tracks for the given mood/genre.
@@ -53,7 +52,7 @@ def generate_tracks(user_prompt):
             {"role": "user", "content": f"Generate 40+ songs for mood: '{user_prompt}'. Seed: {random_seed}"}
         ],
         temperature=0.85,
-        max_tokens=3500  # Снижено с 6000, чтобы уложиться в бесплатный TPM лимит Groq
+        max_tokens=3500
     )
 
     response_content = completion.choices[0].message.content.strip()
@@ -157,6 +156,10 @@ def callback():
         session['spotify_playlist_url'] = playlist['external_urls']['spotify']
 
     return redirect(url_for('index'))
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
 
 
 if __name__ == '__main__':
