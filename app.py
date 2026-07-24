@@ -25,7 +25,8 @@ def create_spotify_oauth():
         client_id=SPOTIFY_CLIENT_ID,
         client_secret=SPOTIFY_CLIENT_SECRET,
         redirect_uri=SPOTIFY_REDIRECT_URI,
-        scope=SCOPE
+        scope=SCOPE,
+        cache_handler=None  # Отключаем локальный кэш токенов для корректной работы на серверном хостинге
     )
 
 SYSTEM_INSTRUCTION = """
@@ -71,7 +72,7 @@ def generate_tracks(user_prompt):
 @app.route('/', methods=['GET', 'POST'])
 def index():
     tracks = session.get('last_tracks', [])
-    error = None
+    error = session.pop('last_error', None)
     user_prompt = session.get('last_prompt', "")
     playlist_url = session.pop('spotify_playlist_url', None)
 
@@ -101,13 +102,14 @@ def retry():
         return redirect(url_for('index'))
     
     if not groq_client:
-        return render_template('index.html', tracks=[], error="Groq API key is missing.", user_prompt=user_prompt)
+        session['last_error'] = "Groq API key is missing."
+        return redirect(url_for('index'))
 
     try:
         tracks = generate_tracks(user_prompt)
         session['last_tracks'] = tracks
     except Exception as e:
-        return render_template('index.html', tracks=session.get('last_tracks', []), error=f"Error regenerating playlist: {str(e)}", user_prompt=user_prompt)
+        session['last_error'] = f"Error regenerating playlist: {str(e)}"
 
     return redirect(url_for('index'))
 
@@ -123,45 +125,53 @@ def export_spotify():
 def callback():
     sp_oauth = create_spotify_oauth()
     code = request.args.get('code')
-    token_info = sp_oauth.get_access_token(code)
-
-    if not token_info:
+    
+    if not code:
         return redirect(url_for('index'))
 
-    sp = spotipy.Spotify(auth=token_info['access_token'])
-    user_id = sp.current_user()['id']
+    try:
+        token_info = sp_oauth.get_access_token(code, check_cache=False)
+        
+        # Получаем чистый токен из ответа
+        access_token = token_info['access_token'] if isinstance(token_info, dict) else token_info
+        
+        sp = spotipy.Spotify(auth=access_token)
+        user_id = sp.current_user()['id']
 
-    tracks = session.get('last_tracks', [])
-    prompt = session.get('last_prompt', 'AI Vibe')
+        tracks = session.get('last_tracks', [])
+        prompt = session.get('last_prompt', 'AI Vibe')
 
-    if tracks:
-        playlist = sp.user_playlist_create(
-            user=user_id,
-            name=f"AI Vibe: {prompt[:30]}",
-            public=True,
-            description=f"Generated playlist for prompt: {prompt}"
-        )
+        if tracks:
+            playlist = sp.user_playlist_create(
+                user=user_id,
+                name=f"AI Vibe: {prompt[:30]}",
+                public=True,
+                description=f"Generated playlist for prompt: {prompt}"
+            )
 
-        track_uris = []
-        for track in tracks:
-            query = f"artist:{track['artist']} track:{track['title']}"
-            result = sp.search(q=query, type='track', limit=1)
-            items = result['tracks']['items']
-            if items:
-                track_uris.append(items[0]['uri'])
+            track_uris = []
+            for track in tracks:
+                try:
+                    query = f"artist:{track['artist']} track:{track['title']}"
+                    result = sp.search(q=query, type='track', limit=1)
+                    items = result['tracks']['items']
+                    if items:
+                        track_uris.append(items[0]['uri'])
+                except Exception:
+                    continue
 
-        if track_uris:
-            sp.playlist_add_items(playlist['id'], track_uris)
+            if track_uris:
+                # Вставляем пачками по 100 треков (лимит Spotify API)
+                for i in range(0, len(track_uris), 100):
+                    sp.playlist_add_items(playlist['id'], track_uris[i:i + 100])
 
-        session['spotify_playlist_url'] = playlist['external_urls']['spotify']
+            session['spotify_playlist_url'] = playlist['external_urls']['spotify']
+
+    except Exception as e:
+        session['last_error'] = f"Spotify Export Error: {str(e)}"
 
     return redirect(url_for('index'))
 
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
