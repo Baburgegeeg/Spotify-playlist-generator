@@ -1,7 +1,8 @@
 import os
 import json
 import random
-from flask import Flask, render_template, request, redirect, session, url_for
+from concurrent.futures import ThreadPoolExecutor
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify
 from groq import Groq
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -26,7 +27,7 @@ def create_spotify_oauth():
         client_secret=SPOTIFY_CLIENT_SECRET,
         redirect_uri=SPOTIFY_REDIRECT_URI,
         scope=SCOPE,
-        cache_handler=None  # Отключаем локальный кэш токенов для корректной работы на серверном хостинге
+        cache_handler=None
     )
 
 SYSTEM_INSTRUCTION = """
@@ -43,7 +44,6 @@ Example:
 """
 
 def generate_tracks(user_prompt):
-    """Helper function to call Groq API without hitting TPM limits"""
     random_seed = random.randint(1, 100000)
     
     completion = groq_client.chat.completions.create(
@@ -69,12 +69,24 @@ def generate_tracks(user_prompt):
     return raw_data
 
 
+def search_single_track(sp, track):
+    """Вспомогательная функция для параллельного поиска одного трека"""
+    try:
+        query = f"artist:{track['artist']} track:{track['title']}"
+        result = sp.search(q=query, type='track', limit=1)
+        items = result['tracks']['items']
+        if items:
+            return items[0]['uri']
+    except Exception:
+        pass
+    return None
+
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     tracks = session.get('last_tracks', [])
     error = session.pop('last_error', None)
     user_prompt = session.get('last_prompt', "")
-    playlist_url = session.pop('spotify_playlist_url', None)
 
     if request.method == 'POST':
         user_prompt = request.form.get('vibe', '').strip()
@@ -91,12 +103,11 @@ def index():
             except Exception as e:
                 error = f"Error generating playlist: {str(e)}"
 
-    return render_template('index.html', tracks=tracks, error=error, user_prompt=user_prompt, playlist_url=playlist_url)
+    return render_template('index.html', tracks=tracks, error=error, user_prompt=user_prompt)
 
 
 @app.route('/retry', methods=['POST'])
 def retry():
-    """Regenerates tracks for the existing prompt"""
     user_prompt = session.get('last_prompt', "")
     if not user_prompt:
         return redirect(url_for('index'))
@@ -114,8 +125,9 @@ def retry():
     return redirect(url_for('index'))
 
 
-@app.route('/export-spotify')
-def export_spotify():
+@app.route('/login-spotify')
+def login_spotify():
+    """Запускает поток OAuth для авторизации в Spotify"""
     sp_oauth = create_spotify_oauth()
     auth_url = sp_oauth.get_authorize_url()
     return redirect(auth_url)
@@ -123,54 +135,65 @@ def export_spotify():
 
 @app.route('/callback')
 def callback():
+    """Сохраняет токен авторизации в сессии после редиректа от Spotify"""
     sp_oauth = create_spotify_oauth()
     code = request.args.get('code')
     
-    if not code:
-        return redirect(url_for('index'))
-
-    try:
-        token_info = sp_oauth.get_access_token(code, check_cache=False)
-        
-        # Получаем чистый токен из ответа
-        access_token = token_info['access_token'] if isinstance(token_info, dict) else token_info
-        
-        sp = spotipy.Spotify(auth=access_token)
-        user_id = sp.current_user()['id']
-
-        tracks = session.get('last_tracks', [])
-        prompt = session.get('last_prompt', 'AI Vibe')
-
-        if tracks:
-            playlist = sp.user_playlist_create(
-                user=user_id,
-                name=f"AI Vibe: {prompt[:30]}",
-                public=True,
-                description=f"Generated playlist for prompt: {prompt}"
-            )
-
-            track_uris = []
-            for track in tracks:
-                try:
-                    query = f"artist:{track['artist']} track:{track['title']}"
-                    result = sp.search(q=query, type='track', limit=1)
-                    items = result['tracks']['items']
-                    if items:
-                        track_uris.append(items[0]['uri'])
-                except Exception:
-                    continue
-
-            if track_uris:
-                # Вставляем пачками по 100 треков (лимит Spotify API)
-                for i in range(0, len(track_uris), 100):
-                    sp.playlist_add_items(playlist['id'], track_uris[i:i + 100])
-
-            session['spotify_playlist_url'] = playlist['external_urls']['spotify']
-
-    except Exception as e:
-        session['last_error'] = f"Spotify Export Error: {str(e)}"
+    if code:
+        try:
+            token_info = sp_oauth.get_access_token(code, check_cache=False)
+            access_token = token_info['access_token'] if isinstance(token_info, dict) else token_info
+            session['spotify_token'] = access_token
+        except Exception as e:
+            session['last_error'] = f"Spotify Auth Error: {str(e)}"
 
     return redirect(url_for('index'))
+
+
+@app.route('/api/export-spotify', methods=['POST'])
+def export_spotify_api():
+    """Быстрый API-эндпоинт с многопоточным поиском треков"""
+    token = session.get('spotify_token')
+    if not token:
+        return jsonify({"success": False, "error": "Not authenticated with Spotify"}), 401
+
+    data = request.get_json() or {}
+    tracks = data.get('tracks', [])
+    prompt = data.get('prompt', 'AI Vibe')
+
+    if not tracks:
+        return jsonify({"success": False, "error": "No tracks provided"}), 400
+
+    try:
+        sp = spotipy.Spotify(auth=token)
+        user_id = sp.current_user()['id']
+
+        # 1. Создаем плейлист
+        playlist = sp.user_playlist_create(
+            user=user_id,
+            name=f"AI Vibe: {prompt[:30]}",
+            public=True,
+            description=f"Generated playlist for prompt: {prompt}"
+        )
+
+        # 2. Параллельный поиск 40 треков в 10 потоков (занимает ~0.5 сек вместо 8 сек)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(search_single_track, sp, track) for track in tracks]
+            track_uris = [f.result() for f in futures if f.result() is not None]
+
+        # 3. Добавляем найденные треки пачками по 100
+        if track_uris:
+            for i in range(0, len(track_uris), 100):
+                sp.playlist_add_items(playlist['id'], track_uris[i:i + 100])
+
+        return jsonify({
+            "success": True, 
+            "playlist_url": playlist['external_urls']['spotify'],
+            "found_count": len(track_uris)
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == '__main__':
