@@ -8,17 +8,24 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "super_secret_flask_key_123")
 
-# Initialize Groq
+# Секретный ключ для сессий Flask (на Render задайте FLASK_SECRET_KEY в Environment Variables)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "super_secret_flask_key_123_change_in_prod")
+
+# Настройки безопасности cookie для работы через HTTPS (Render)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# Инициализация Groq API
 groq_api_key = os.environ.get("GROQ_API_KEY")
 groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
 
-# Spotify OAuth Configuration
+# Настройки Spotify OAuth
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIPY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIPY_CLIENT_SECRET")
 SPOTIFY_REDIRECT_URI = os.environ.get("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:5000/callback")
 
+# Scope с разрешениями для создания публичных и приватных плейлистов
 SCOPE = "playlist-modify-public playlist-modify-private"
 
 def create_spotify_oauth():
@@ -70,7 +77,7 @@ def generate_tracks(user_prompt):
 
 
 def search_single_track(sp, track):
-    """Вспомогательная функция для параллельного поиска одного трека"""
+    """Параллельный поиск одного трека через Spotify API"""
     try:
         query = f"artist:{track['artist']} track:{track['title']}"
         result = sp.search(q=query, type='track', limit=1)
@@ -127,7 +134,8 @@ def retry():
 
 @app.route('/login-spotify')
 def login_spotify():
-    """Запускает поток OAuth для авторизации в Spotify"""
+    """Сбрасывает прошлую сессию и перенаправляет на авторизацию Spotify"""
+    session.pop('spotify_token_info', None)
     sp_oauth = create_spotify_oauth()
     auth_url = sp_oauth.get_authorize_url()
     return redirect(auth_url)
@@ -135,15 +143,14 @@ def login_spotify():
 
 @app.route('/callback')
 def callback():
-    """Сохраняет токен авторизации в сессии после редиректа от Spotify"""
+    """Сохраняет полученный token_info в сессию Flask"""
     sp_oauth = create_spotify_oauth()
     code = request.args.get('code')
     
     if code:
         try:
             token_info = sp_oauth.get_access_token(code, check_cache=False)
-            access_token = token_info['access_token'] if isinstance(token_info, dict) else token_info
-            session['spotify_token'] = access_token
+            session['spotify_token_info'] = token_info
         except Exception as e:
             session['last_error'] = f"Spotify Auth Error: {str(e)}"
 
@@ -152,36 +159,47 @@ def callback():
 
 @app.route('/api/export-spotify', methods=['POST'])
 def export_spotify_api():
-    """Быстрый API-эндпоинт с многопоточным поиском треков"""
-    token = session.get('spotify_token')
-    if not token:
-        return jsonify({"success": False, "error": "Not authenticated with Spotify"}), 401
+    """Фоновый API-эндпоинт экспорта плейлиста в Spotify"""
+    token_info = session.get('spotify_token_info')
+    
+    if not token_info:
+        return jsonify({"success": False, "error": "Not authenticated with Spotify. Please click 'Connect Spotify' first."}), 401
+
+    sp_oauth = create_spotify_oauth()
+    
+    # Автоматическое обновление просроченного токена
+    if sp_oauth.is_token_expired(token_info):
+        try:
+            token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
+            session['spotify_token_info'] = token_info
+        except Exception as e:
+            return jsonify({"success": False, "error": "Session expired. Please reconnect Spotify."}), 401
+
+    access_token = token_info.get('access_token')
 
     data = request.get_json() or {}
     tracks = data.get('tracks', [])
     prompt = data.get('prompt', 'AI Vibe')
 
     if not tracks:
-        return jsonify({"success": False, "error": "No tracks provided"}), 400
+        return jsonify({"success": False, "error": "No tracks to export"}), 400
 
     try:
-        sp = spotipy.Spotify(auth=token)
-        user_id = sp.current_user()['id']
+        sp = spotipy.Spotify(auth=access_token)
 
-        # 1. Создаем плейлист
-        playlist = sp.user_playlist_create(
-            user=user_id,
+        # Создаем плейлист текущему пользователю (универсальный метод для избежания 403)
+        playlist = sp.current_user_playlist_create(
             name=f"AI Vibe: {prompt[:30]}",
             public=True,
             description=f"Generated playlist for prompt: {prompt}"
         )
 
-        # 2. Параллельный поиск 40 треков в 10 потоков (занимает ~0.5 сек вместо 8 сек)
+        # Многопоточный поиск треков (10 потоков)
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(search_single_track, sp, track) for track in tracks]
             track_uris = [f.result() for f in futures if f.result() is not None]
 
-        # 3. Добавляем найденные треки пачками по 100
+        # Добавление найденных треков
         if track_uris:
             for i in range(0, len(track_uris), 100):
                 sp.playlist_add_items(playlist['id'], track_uris[i:i + 100])
