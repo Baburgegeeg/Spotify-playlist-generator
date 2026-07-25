@@ -5,241 +5,92 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Playlist Generator</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-
-        body {
-            background-color: #121212;
-            color: #FFFFFF;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 24px;
-        }
-
-        .container {
-            background-color: #181818;
-            border-radius: 8px;
-            padding: 32px;
-            width: 100%;
-            max-width: 640px;
-            border: 1px solid #282828;
-        }
-
-        h1 {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            margin-bottom: 6px;
-            color: #FFFFFF;
-        }
-
-        p.subtitle {
-            color: #A7A7A7;
-            font-size: 13px;
-            margin-bottom: 24px;
-        }
-
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 12px 14px;
-            border-radius: 4px;
-            border: 1px solid #333333;
-            background-color: #242424;
-            color: #FFFFFF;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.15s ease;
-        }
-
-        input[type="text"]:focus {
-            border-color: #1DB954;
-        }
-
-        .btn {
-            padding: 12px;
-            border-radius: 20px;
-            border: none;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            text-align: center;
-            text-decoration: none;
-            display: block;
-            transition: opacity 0.15s ease;
-        }
-
-        .btn:hover {
-            opacity: 0.85;
-        }
-
-        .btn-submit {
-            background-color: #1DB954;
-            color: #000000;
-        }
-
-        .actions-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .btn-spotify-export {
-            background-color: #FFFFFF;
-            color: #000000;
-            flex-grow: 1;
-        }
-
-        .btn-retry {
-            background-color: #282828;
-            color: #FFFFFF;
-            border: 1px solid #333333;
-            padding: 12px 20px;
-        }
-
-        .btn-success {
-            background-color: #282828;
-            color: #1DB954;
-            border: 1px solid #1DB954;
-            margin-bottom: 20px;
-        }
-
-        .error {
-            border: 1px solid #E91429;
-            color: #E91429;
-            padding: 10px 14px;
-            border-radius: 4px;
-            font-size: 13px;
-            margin-bottom: 20px;
-        }
-
-        .playlist {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            max-height: 480px;
-            overflow-y: auto;
-            padding-right: 4px;
-        }
-
-        .playlist::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        .playlist::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .playlist::-webkit-scrollbar-thumb {
-            background: #333333;
-            border-radius: 2px;
-        }
-
-        .track-card {
-            background-color: transparent;
-            padding: 8px 12px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            transition: background-color 0.15s ease;
-        }
-
-        .track-card:hover {
-            background-color: #282828;
-        }
-
-        .track-num {
-            color: #A7A7A7;
-            font-size: 13px;
-            margin-right: 16px;
-            min-width: 24px;
-            text-align: right;
-        }
-
-        .track-info {
-            display: flex;
-            flex-direction: column;
-            flex-grow: 1;
-            overflow: hidden;
-        }
-
-        .track-title {
-            font-weight: 500;
-            font-size: 14px;
-            color: #FFFFFF;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .track-artist {
-            color: #A7A7A7;
-            font-size: 12px;
-            margin-top: 2px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #1db954; }
+        input[type="text"] { width: 70%; padding: 12px; border-radius: 4px; border: 1px solid #333; background: #222; color: #fff; }
+        button, .btn { padding: 12px 20px; border-radius: 20px; border: none; background: #1db954; color: #fff; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        .error { color: #ff5555; background: #331111; padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .track-list { margin-top: 20px; list-style: none; padding: 0; }
+        .track-item { background: #181818; padding: 12px; margin-bottom: 8px; border-radius: 4px; display: flex; justify-content: space-between; }
+        .actions { margin: 20px 0; display: flex; gap: 10px; align-items: center; }
+        .status-msg { font-weight: bold; color: #1db954; }
     </style>
 </head>
 <body>
 
-<div class="container">
     <h1>AI Playlist Generator</h1>
-    <p class="subtitle">Enter a mood, prompt, or genre to generate a playlist.</p>
 
-    <form method="POST">
-        <input 
-            type="text" 
-            name="vibe" 
-            placeholder="Late night drive, heavy workout, chill hip-hop..." 
-            value="{{ user_prompt }}" 
-            required
-        >
-        <button type="submit" class="btn btn-submit">Generate Playlist</button>
+    <form method="POST" action="/">
+        <input type="text" name="vibe" placeholder="Enter a mood or genre (e.g. 2000s nu-metal or dark chill hip-hop)..." value="{{ user_prompt }}">
+        <button type="submit">Generate</button>
     </form>
 
     {% if error %}
         <div class="error">{{ error }}</div>
     {% endif %}
 
-    {% if playlist_url %}
-        <a href="{{ playlist_url }}" target="_blank" class="btn btn-success">Open in Spotify</a>
-    {% endif %}
-
     {% if tracks %}
-        <div class="actions-group">
-            <a href="/export-spotify" class="btn btn-spotify-export">Save to Spotify Account</a>
-            <form action="/retry" method="POST" style="margin: 0;">
-                <button type="submit" class="btn btn-retry">Retry</button>
+        <div class="actions">
+            <form method="POST" action="/retry" style="display:inline;">
+                <button type="submit" style="background:#333;">Regenerate</button>
             </form>
-        </div>
-        
-        <div class="playlist">
-            {% for track in tracks %}
-                <div class="track-card">
-                    <span class="track-num">{{ loop.index }}</span>
-                    <div class="track-info">
-                        <span class="track-title">{{ track.title }}</span>
-                        <span class="track-artist">{{ track.artist }}</span>
-                    </div>
-                </div>
-            {% endfor %}
-        </div>
-    {% endif %}
-</div>
 
+            {% if session.get('spotify_token') %}
+                <button id="exportBtn" onclick="exportToSpotify()">Save to Spotify</button>
+            {% else %}
+                <a href="/login-spotify" class="btn">Connect Spotify to Save</a>
+            {% endif %}
+
+            <span id="exportStatus" class="status-msg"></span>
+        </div>
+
+        <h3>Generated Tracks ({{ tracks|length }})</h3>
+        <ul class="track-list">
+            {% for track in tracks %}
+                <li class="track-item">
+                    <span><strong>{{ track.title }}</strong></span>
+                    <span style="color: #aaa;">{{ track.artist }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <script>
+        // Передаем данные из Flask в JS
+        const currentTracks = {{ tracks|tojson|safe if tracks else '[]' }};
+        const currentPrompt = {{ user_prompt|tojson|safe if user_prompt else '""' }};
+
+        async function exportToSpotify() {
+            const btn = document.getElementById('exportBtn');
+            const status = document.getElementById('exportStatus');
+
+            btn.disabled = true;
+            status.innerText = "Creating playlist...";
+
+            try {
+                const response = await fetch('/api/export-spotify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tracks: currentTracks,
+                        prompt: currentPrompt
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    status.innerHTML = `<a href="${result.playlist_url}" target="_blank" style="color:#1db954;">Open Playlist in Spotify (${result.found_count} tracks added)</a>`;
+                } else {
+                    status.innerText = "Error: " + result.error;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                status.innerText = "Failed to export playlist.";
+                btn.disabled = false;
+            }
+        }
+    </script>
 </body>
 </html>
